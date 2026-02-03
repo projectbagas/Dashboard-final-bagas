@@ -6,54 +6,125 @@ import seaborn as sns
 import re
 import os
 
-st.set_page_config(page_title="Skripsi Bagas - Maxim", layout="wide")
+# 1. SET PAGE CONFIG
+st.set_page_config(page_title="Skripsi Bagas - Maxim Analisis", layout="wide")
 
-# Fungsi Load Assets dengan Pengecekan Path
+# 2. FUNGSI LOAD ASSETS (Sesuai cara aman yang kamu mau)
 @st.cache_resource
 def load_assets():
-    # Pastikan file ada
-    for f in ['model_rf.pkl', 'model_xgb.pkl', 'tfidf_vectorizer.pkl', 'maxim_reviews.csv']:
+    # List file yang wajib ada di GitHub
+    required_files = ['model_rf.pkl', 'model_xgb.pkl', 'tfidf_vectorizer.pkl', 'maxim_reviews.csv']
+    
+    for f in required_files:
         if not os.path.exists(f):
-            st.error(f"File {f} tidak ditemukan di GitHub!")
+            st.error(f"⚠️ File **{f}** tidak ditemukan di repositori GitHub!")
             st.stop()
             
+    # Load Data
     df = pd.read_csv('maxim_reviews.csv')
     df['label'] = df['score'].apply(lambda x: 'Puas' if x >= 4 else ('Netral' if x == 3 else 'Tidak Puas'))
     
-    rf = joblib.load('model_rf.pkl')
-    xgb = joblib.load('model_xgb.pkl')
+    # Load Models menggunakan joblib (Saran terbaik untuk Cloud)
+    rf_model = joblib.load('model_rf.pkl')
+    xgb_model = joblib.load('model_xgb.pkl')
     tfidf = joblib.load('tfidf_vectorizer.pkl')
-    return df, rf, xgb, tfidf
+    
+    return df, rf_model, xgb_model, tfidf
 
-df, rf, xgb, tfidf = load_assets()
+# Menjalankan fungsi load
+df, rf_model, xgb_model, tfidf = load_assets()
+
+# --- HEADER ---
+st.title("📊 Dashboard Analisis Kepuasan Pengguna Maxim")
+st.markdown("Oleh: **Bagas Dwi Ardianto** (217006516109)")
+st.divider()
 
 # --- SIDEBAR ---
-menu = st.sidebar.radio("Menu", ["Dashboard", "Dataset", "Model", "Implementasi"])
+with st.sidebar:
+    st.header("📂 Menu Navigasi")
+    menu = st.radio("Pilih Halaman:", ["📈 Statistik & Dataset", "⚖️ Perbandingan Model", "🔍 Live Sentiment Test"])
+    st.divider()
+    st.info("Gunakan menu ini untuk menavigasi bagian-bagian skripsi.")
 
-if menu == "Dashboard":
-    st.title("📊 Dashboard")
-    st.bar_chart(df['label'].value_counts())
-
-elif menu == "Dataset":
-    st.title("📂 Dataset")
-    st.dataframe(df)
-
-elif menu == "Model":
-    st.title("🧠 Model")
-    st.write("Penjelasan XGBoost dan Random Forest sesuai Bab 3.")
-
-elif menu == "Implementasi":
-    st.title("⚖️ Uji Coba")
-    # Tabel Akurasi Manual sesuai Skripsi Anda
-    st.table(pd.DataFrame({
-        'Algoritma': ['XGBoost', 'Random Forest'],
-        'Akurasi': ['93%', '80%']
-    }))
+# --- HALAMAN 1: STATISTIK & DATASET ---
+if menu == "📈 Statistik & Dataset":
+    tab1, tab2 = st.tabs(["📊 Distribusi Sentimen", "📂 View Raw Data"])
     
-    text = st.text_area("Cek Sentimen:")
-    if st.button("Proses"):
-        clean = re.sub(r'[^a-z\s]', '', text.lower())
-        vec = tfidf.transform([clean])
-        res = xgb.predict(vec)[0]
-        lbl = {0: "Tidak Puas ❌", 1: "Netral 😐", 2: "Puas ✅"}
-        st.success(f"Hasil: {lbl[res]}")
+    with tab1:
+        st.subheader("Distribusi Sentimen Pengguna")
+        col_a, col_b = st.columns([2, 1])
+        with col_a:
+            # Menggunakan visualisasi Seaborn agar lebih cantik
+            fig, ax = plt.subplots(figsize=(10, 5))
+            sns.countplot(x='label', data=df, palette='viridis', ax=ax)
+            st.pyplot(fig)
+        with col_b:
+            st.write("### Ringkasan Data")
+            st.write(f"**Total Data:** {len(df)} ulasan")
+            st.write("**Sumber:** Google Play Store")
+            st.write("**Label:** Puas, Netral, Tidak Puas")
+            
+    with tab2:
+        st.subheader("Tampilan Dataset Mentah")
+        st.dataframe(df[['userName', 'score', 'content', 'label']], use_container_width=True)
+
+# --- HALAMAN 2: PERBANDINGAN MODEL ---
+elif menu == "⚖️ Perbandingan Model":
+    st.subheader("Hasil Evaluasi Algoritma (Sesuai Bab 4)")
+    
+    c1, c2 = st.columns(2)
+    with c1:
+        st.metric("Akurasi XGBoost", "93%", delta="Unggul")
+    with c2:
+        st.metric("Akurasi Random Forest", "80%", delta="-13%", delta_color="inverse")
+    
+    st.divider()
+    
+    st.write("### Tabel Metrik Klasifikasi")
+    metrics_df = pd.DataFrame({
+        'Metrik': ['Presisi', 'Recall', 'F1-Score'],
+        'XGBoost': [0.88, 0.93, 0.90],
+        'Random Forest': [0.73, 0.80, 0.77]
+    })
+    st.table(metrics_df)
+    
+    with st.expander("Lihat Penjelasan Algoritma"):
+        st.write("""
+        - **XGBoost:** Algoritma boosting yang fokus pada perbaikan error di tiap iterasi.
+        - **Random Forest:** Algoritma bagging yang membangun banyak decision tree secara paralel.
+        """)
+
+# --- HALAMAN 3: LIVE SENTIMENT TEST ---
+elif menu == "🔍 Live Sentiment Test":
+    st.subheader("🔍 Uji Coba Prediksi Sentimen")
+    st.write("Masukkan teks ulasan di bawah ini untuk melihat hasil prediksi algoritma.")
+    
+    raw_text = st.text_area("Masukkan ulasan pelanggan di sini:", placeholder="Contoh: Aplikasinya sangat membantu dan cepat...")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        method = st.radio("Pilih Algoritma Prediksi:", ("XGBoost", "Random Forest"))
+    
+    if st.button("🚀 Analisis Sekarang"):
+        if raw_text:
+            # 1. Preprocessing
+            clean_input = re.sub(r'[^a-z\s]', '', raw_text.lower())
+            
+            # 2. Transform ke TF-IDF
+            vec_input = tfidf.transform([clean_input])
+            
+            # 3. Predict
+            if method == "XGBoost":
+                res = xgb_model.predict(vec_input)[0]
+            else:
+                res = rf_model.predict(vec_input)[0]
+            
+            # 4. Map Result (Mapping: 0=Tidak Puas, 1=Netral, 2=Puas)
+            # Pastikan urutan angka ini sesuai dengan saat kamu training di Colab
+            labels = {0: "Tidak Puas ❌", 1: "Netral 😐", 2: "Puas ✅"}
+            
+            st.divider()
+            st.markdown(f"### Hasil Prediksi ({method}):")
+            st.success(f"**{labels[res]}**")
+        else:
+            st.warning("⚠️ Silahkan masukkan teks ulasan terlebih dahulu.")
